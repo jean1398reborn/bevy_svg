@@ -20,7 +20,8 @@ use bevy::{
         entity::Entity,
         event::EventReader,
         schedule::{StageLabel, SystemStage},
-        system::{Commands, Query, Res, ResMut}
+        system::{Commands, Query, Res, ResMut},
+        query::Changed,
     },
     hierarchy::DespawnRecursiveExt,
     log::debug,
@@ -57,7 +58,33 @@ impl Plugin for SvgPlugin {
                 SystemStage::parallel(),
             )
             .add_system_to_stage(Stage::SVG, svg_mesh_linker)
+            .add_system_to_stage(Stage::SVG, set_svg_meshes)
             .add_plugin(render::SvgPlugin);
+    }
+}
+
+/// Sets the mesh for svgs that are made after the asset is created
+/// This doesn't mess with the transform, at least for now.
+fn set_svg_meshes(
+    svgs: Res<Assets<Svg>>,
+    mut query: Query<
+        (&Handle<Svg>, Option<&mut Mesh2dHandle>, Option<&mut Handle<Mesh>>),
+        Changed<Handle<Svg>>,
+    >,
+) {
+    for (handle, mesh_2d, mesh_3d) in query.iter_mut() {
+        if let Some(svg) = svgs.get(handle) {
+            mesh_2d.filter(|mesh| mesh.0 != svg.mesh)
+                .map(|mut mesh| {
+                    mesh.0 = svg.mesh.clone();
+                });
+            mesh_3d.filter(|mesh| mesh.deref() != &svg.mesh)
+                .map(|mut mesh| {
+                    *mesh = svg.mesh.clone();
+                });
+        }
+
+        // If the svg doesn't exist yet, wait for a `AssetEvent::Created` event
     }
 }
 
